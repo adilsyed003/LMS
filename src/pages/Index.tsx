@@ -21,14 +21,17 @@ const Index = ({ isDark, toggleTheme }: IndexProps) => {
     let filtered = mockCourses;
 
     if (selectedCategory !== "All") {
-      filtered = filtered.filter(course => course.category === selectedCategory);
+      filtered = filtered.filter(
+        (course) => course.category === selectedCategory
+      );
     }
 
     if (searchQuery) {
-      filtered = filtered.filter(course =>
-        course.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        course.instructor.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        course.description.toLowerCase().includes(searchQuery.toLowerCase())
+      filtered = filtered.filter(
+        (course) =>
+          course.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          course.instructor.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          course.description.toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
 
@@ -45,27 +48,31 @@ const Index = ({ isDark, toggleTheme }: IndexProps) => {
 
   return (
     <div className="min-h-screen bg-background">
-      <Navbar 
+      <Navbar
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
         isDark={isDark}
         toggleTheme={toggleTheme}
       />
-      
+
       <HeroBanner onAddCourse={handleAddCourse} />
-      
+
       <section className="py-12">
         <div className="container mx-auto px-4">
           <div className="mb-8">
             <h2 className="text-3xl font-bold mb-6">What to learn next</h2>
-            <p className="text-lg text-muted-foreground mb-6">Learners are viewing</p>
-            
+            <p className="text-lg text-muted-foreground mb-6">
+              Learners are viewing
+            </p>
+
             {/* Category Filter */}
             <div className="flex gap-2 mb-8 overflow-x-auto pb-2">
               {categories.map((category) => (
                 <Button
                   key={category}
-                  variant={selectedCategory === category ? "default" : "outline"}
+                  variant={
+                    selectedCategory === category ? "default" : "outline"
+                  }
                   onClick={() => setSelectedCategory(category)}
                   className="whitespace-nowrap"
                 >

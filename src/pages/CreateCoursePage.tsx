@@ -30,6 +30,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { SignedIn, SignedOut, SignIn } from "@clerk/clerk-react";
 import NavbarExtra from "@/components/layout/NavbarExtra";
+import { useUser } from "@clerk/clerk-react";
 interface CourseSection {
   id: string;
   title: string;
@@ -180,6 +181,7 @@ export default function CreateCoursePage() {
   const [courseDescription, setCourseDescription] = useState("");
   const [sections, setSections] = useState<CourseSection[]>([]);
   const [isDark, setIsDark] = useState(false);
+  const { user } = useUser();
   const toggleTheme = () => {
     setIsDark((prev) => !prev);
     if (!isDark) {
@@ -236,7 +238,8 @@ export default function CreateCoursePage() {
     }
   };
 
-  const publishCourse = () => {
+  const publishCourse = async (e: React.FormEvent) => {
+    e.preventDefault();
     const courseData = {
       title: courseTitle,
       description: courseDescription,
@@ -244,6 +247,24 @@ export default function CreateCoursePage() {
     };
     console.log("Publishing course:", courseData);
     // Here you would send the data to your backend
+
+    const response = await fetch("http://localhost:4000/api/courses", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: courseData.title,
+        description: courseData.description,
+        thumbnailUrl: "",
+        instructorId: user.id,
+      }),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      console.log("Course published successfully:", data);
+    } else {
+      console.error("Failed to publish course");
+    }
   };
 
   return (
