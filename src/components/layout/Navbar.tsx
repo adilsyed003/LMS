@@ -1,9 +1,13 @@
 import { Search, Sun, Moon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { AuthDialog } from "@/components/auth/AuthDialog";
 import { useState } from "react";
-
+import {
+  SignedIn,
+  SignedOut,
+  SignInButton,
+  UserButton,
+} from "@clerk/clerk-react";
 interface NavbarProps {
   searchQuery: string;
   setSearchQuery: (query: string) => void;
@@ -11,16 +15,19 @@ interface NavbarProps {
   toggleTheme: () => void;
 }
 
-export function Navbar({ searchQuery, setSearchQuery, isDark, toggleTheme }: NavbarProps) {
-  const [showAuthDialog, setShowAuthDialog] = useState(false);
-  
+export function Navbar({
+  searchQuery,
+  setSearchQuery,
+  isDark,
+  toggleTheme,
+}: NavbarProps) {
   return (
     <>
       <nav className="bg-background border-b border-border px-4 py-3">
         <div className="container mx-auto flex items-center justify-between">
           <div className="flex items-center gap-8">
-            <h1 className="text-2xl font-bold text-primary">LMS</h1>
-            
+            <h1 className="text-2xl font-bold text-primary">Skelo LMS</h1>
+
             <div className="relative w-96">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
               <Input
@@ -39,23 +46,24 @@ export function Navbar({ searchQuery, setSearchQuery, isDark, toggleTheme }: Nav
               onClick={toggleTheme}
               className="h-9 w-9"
             >
-              {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              {isDark ? (
+                <Sun className="h-4 w-4" />
+              ) : (
+                <Moon className="h-4 w-4" />
+              )}
             </Button>
-            
-            <Button variant="outline" onClick={() => setShowAuthDialog(true)}>
-              Sign In
-            </Button>
-            <Button onClick={() => setShowAuthDialog(true)}>
-              Get Started
-            </Button>
+
+            <SignedOut>
+              <Button className="px-4 py-3 h-auto">
+                <SignInButton />
+              </Button>
+            </SignedOut>
+            <SignedIn>
+              <UserButton />
+            </SignedIn>
           </div>
         </div>
       </nav>
-
-      <AuthDialog 
-        open={showAuthDialog} 
-        onOpenChange={setShowAuthDialog} 
-      />
     </>
   );
 }
