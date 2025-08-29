@@ -31,16 +31,18 @@ import { CSS } from "@dnd-kit/utilities";
 import { SignedIn, SignedOut, SignIn } from "@clerk/clerk-react";
 import NavbarExtra from "@/components/layout/NavbarExtra";
 import { useUser } from "@clerk/clerk-react";
+import { useMutation } from "@tanstack/react-query";
+import { api } from "../api";
 interface CourseSection {
   id: string;
   title: string;
-  lectures: Lecture[];
+  contents: Content[]; // Updated from lectures to contents
 }
 
-interface Lecture {
+interface Content {
   id: string;
   title: string;
-  type: "video" | "text" | "quiz";
+  type: "VIDEO" | "TEXT" | "QUIZ"; // Updated to match backend ContentType enum
   content?: string;
 }
 
@@ -61,30 +63,30 @@ function SortableSection({
     transition,
   };
 
-  const addLecture = (type: "video" | "text" | "quiz") => {
-    const newLecture: Lecture = {
-      id: `${section.id}-lecture-${Date.now()}`,
+  const addContent = (type: "VIDEO" | "TEXT" | "QUIZ") => {
+    const newContent: Content = {
+      id: `${section.id}-content-${Date.now()}`,
       title: `New ${type}`,
       type,
     };
 
     onUpdateSection(section.id, {
-      lectures: [...section.lectures, newLecture],
+      contents: [...section.contents, newContent],
     });
   };
 
-  const updateLecture = (lectureId: string, updates: Partial<Lecture>) => {
-    const updatedLectures = section.lectures.map((lecture) =>
-      lecture.id === lectureId ? { ...lecture, ...updates } : lecture
+  const updateContent = (contentId: string, updates: Partial<Content>) => {
+    const updatedContents = section.contents.map((content) =>
+      content.id === contentId ? { ...content, ...updates } : content
     );
-    onUpdateSection(section.id, { lectures: updatedLectures });
+    onUpdateSection(section.id, { contents: updatedContents });
   };
 
-  const deleteLecture = (lectureId: string) => {
-    const updatedLectures = section.lectures.filter(
-      (lecture) => lecture.id !== lectureId
+  const deleteContent = (contentId: string) => {
+    const updatedContents = section.contents.filter(
+      (content) => content.id !== contentId
     );
-    onUpdateSection(section.id, { lectures: updatedLectures });
+    onUpdateSection(section.id, { contents: updatedContents });
   };
 
   return (
@@ -114,22 +116,22 @@ function SortableSection({
 
       <CardContent>
         <div className="space-y-3">
-          {section.lectures.map((lecture) => (
+          {section.contents.map((content) => (
             <div
-              key={lecture.id}
+              key={content.id}
               className="flex items-center gap-3 p-3 border rounded"
             >
               <div className="flex items-center gap-2 flex-1">
-                {lecture.type === "video" && <Video className="h-4 w-4" />}
-                {lecture.type === "text" && <FileText className="h-4 w-4" />}
-                {lecture.type === "quiz" && <HelpCircle className="h-4 w-4" />}
+                {content.type === "VIDEO" && <Video className="h-4 w-4" />}
+                {content.type === "TEXT" && <FileText className="h-4 w-4" />}
+                {content.type === "QUIZ" && <HelpCircle className="h-4 w-4" />}
 
                 <Input
-                  value={lecture.title}
+                  value={content.title}
                   onChange={(e) =>
-                    updateLecture(lecture.id, { title: e.target.value })
+                    updateContent(content.id, { title: e.target.value })
                   }
-                  placeholder="Lecture title"
+                  placeholder="Content title"
                   className="flex-1"
                 />
               </div>
@@ -137,7 +139,7 @@ function SortableSection({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => deleteLecture(lecture.id)}
+                onClick={() => deleteContent(content.id)}
               >
                 <X className="h-4 w-4" />
               </Button>
@@ -148,7 +150,7 @@ function SortableSection({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => addLecture("video")}
+              onClick={() => addContent("VIDEO")}
             >
               <Video className="h-4 w-4 mr-2" />
               Video
@@ -156,7 +158,7 @@ function SortableSection({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => addLecture("text")}
+              onClick={() => addContent("TEXT")}
             >
               <FileText className="h-4 w-4 mr-2" />
               Text
@@ -164,7 +166,7 @@ function SortableSection({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => addLecture("quiz")}
+              onClick={() => addContent("QUIZ")}
             >
               <HelpCircle className="h-4 w-4 mr-2" />
               Quiz
@@ -201,7 +203,7 @@ export default function CreateCoursePage() {
     const newSection: CourseSection = {
       id: `section-${Date.now()}`,
       title: `Section ${sections.length + 1}`,
-      lectures: [],
+      contents: [],
     };
     setSections([...sections, newSection]);
   };
@@ -245,25 +247,41 @@ export default function CreateCoursePage() {
       description: courseDescription,
       sections,
     };
-    console.log("Publishing course:", courseData);
-    // Here you would send the data to your backend
 
-    const response = await fetch("http://localhost:4000/api/courses", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    try {
+      // Create course
+      const courseResponse = await api.post("/api/courses", {
         title: courseData.title,
         description: courseData.description,
         thumbnailUrl: "",
         instructorId: user.id,
-      }),
-    });
+      });
+      const courseId = courseResponse.data.id;
 
-    if (response.ok) {
-      const data = await response.json();
-      console.log("Course published successfully:", data);
-    } else {
-      console.error("Failed to publish course");
+      // Create sections
+      for (const section of sections) {
+        const sectionResponse = await api.post("/api/sections", {
+          title: section.title,
+          courseId,
+        });
+        const sectionId = sectionResponse.data.id;
+
+        // Create contents
+        for (const content of section.contents) {
+          await api.post("/api/contents", {
+            sectionId,
+            type: content.type,
+            title: content.title,
+            url: content.type === "VIDEO" ? content.content : undefined,
+            text: content.type !== "VIDEO" ? content.content : undefined,
+          });
+        }
+      }
+
+      alert("Course published successfully!");
+    } catch (error) {
+      console.error("Failed to publish course", error);
+      alert("Failed to publish course");
     }
   };
 

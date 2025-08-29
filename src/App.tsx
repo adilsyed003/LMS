@@ -1,19 +1,19 @@
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { useState, useEffect } from "react";
 import Index from "./pages/Index";
 import CoursePage from "./pages/CoursePage";
 import CreateCoursePage from "./pages/CreateCoursePage";
 import NotFound from "./pages/NotFound";
-
-const queryClient = new QueryClient();
+import { useUser } from "@clerk/clerk-react";
+import { api } from "./api";
 
 const App = () => {
   const [isDark, setIsDark] = useState(false);
-
+  const { isSignedIn, user } = useUser();
   useEffect(() => {
     const savedTheme = localStorage.getItem("theme");
     if (savedTheme === "dark") {
@@ -21,6 +21,20 @@ const App = () => {
       document.documentElement.classList.add("dark");
     }
   }, []);
+  const mutation = useMutation({
+    mutationFn: (newInstructor: { email: string; name: string }) =>
+      api.post("/api/instructors", newInstructor),
+  });
+  useEffect(() => {
+    if (isSignedIn) {
+      const newInstructor = {
+        email: user.primaryEmailAddress?.emailAddress,
+        name: user.fullName ? user.fullName : "No Name",
+      };
+      mutation.mutate(newInstructor);
+      console.log("User signed in:", user);
+    }
+  }, [isSignedIn, user]);
 
   const toggleTheme = () => {
     const newTheme = !isDark;
@@ -36,24 +50,22 @@ const App = () => {
   };
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            <Route
-              path="/"
-              element={<Index isDark={isDark} toggleTheme={toggleTheme} />}
-            />
-            <Route path="/course/:courseId" element={<CoursePage />} />
-            <Route path="/create-course" element={<CreateCoursePage />} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </TooltipProvider>
-    </QueryClientProvider>
+    <TooltipProvider>
+      <Toaster />
+      <Sonner />
+      <BrowserRouter>
+        <Routes>
+          <Route
+            path="/"
+            element={<Index isDark={isDark} toggleTheme={toggleTheme} />}
+          />
+          <Route path="/course/:courseId" element={<CoursePage />} />
+          <Route path="/create-course" element={<CreateCoursePage />} />
+          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </BrowserRouter>
+    </TooltipProvider>
   );
 };
 
