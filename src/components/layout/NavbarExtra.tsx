@@ -36,13 +36,7 @@ const NavbarExtra: React.FC<NavbarExtraProps> = ({
               <Moon className="h-4 w-4" />
             )}
           </Button>
-          <Button
-            variant="secondary"
-            className="bg-white text-primary font-semibold px-4 py-2 rounded shadow"
-            onClick={onYourCourses}
-          >
-            Your Courses
-          </Button>
+          <Button onClick={onYourCourses}>Your Courses</Button>
           <UserButton />
         </div>
       </div>
