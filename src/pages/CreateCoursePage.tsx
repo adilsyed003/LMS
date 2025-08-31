@@ -1,4 +1,5 @@
 import { useState } from "react";
+import DropzoneSection from "./DropzoneSection";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -38,6 +39,7 @@ interface Video {
   title: string;
   description: string;
   url: string;
+  file?: File;
 }
 
 interface QuizQuestion {
@@ -127,6 +129,38 @@ function SortableSection({
     const updatedQuizzes = section.quizzes.filter((quiz) => quiz.id !== quizId);
     onUpdateSection(section.id, { quizzes: updatedQuizzes });
   };
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const videoMutation = useMutation({
+    mutationFn: async (file: File) => {
+      if (!file) throw new Error("No file selected");
+
+      // Step 1: Ask backend for signed upload URL
+      const res = await fetch(
+        `http://localhost:4000/upload/video?fileType=${file.type}`
+      );
+      if (!res.ok) throw new Error("Failed to get signed upload URL");
+      const { uploadUrl, key } = await res.json();
+
+      // Step 2: Upload directly to S3
+      const putRes = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!putRes.ok) throw new Error("Failed to upload file");
+
+      // Step 3: Return key for use as video url
+      return key;
+    },
+    onSuccess: (key, file, context) => {
+      // Find the video with this file and update its url
+      section.videos.forEach((video) => {
+        if (video.file === file) {
+          updateVideo(video.id, { url: key });
+        }
+      });
+    },
+  });
 
   return (
     <Card ref={setNodeRef} style={style} className="mb-4">
@@ -159,38 +193,73 @@ function SortableSection({
           {section.videos.map((video) => (
             <div
               key={video.id}
-              className="flex items-center gap-3 p-3 border rounded"
+              className="p-3 border rounded mb-2 flex flex-col gap-3"
             >
-              <Video className="h-4 w-4" />
-              <Input
-                value={video.title}
-                onChange={(e) =>
-                  updateVideo(video.id, { title: e.target.value })
-                }
-                placeholder="Video title"
-                className="flex-1"
-              />
-              <Input
-                value={video.url}
-                onChange={(e) => updateVideo(video.id, { url: e.target.value })}
-                placeholder="Video URL"
-                className="flex-1"
-              />
-              <Input
-                value={video.description}
-                onChange={(e) =>
-                  updateVideo(video.id, { description: e.target.value })
-                }
-                placeholder="Description"
-                className="flex-1"
-              />
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => deleteVideo(video.id)}
-              >
-                <X className="h-4 w-4" />
-              </Button>
+              <div className="flex items-center gap-3">
+                <Video className="h-4 w-4" />
+                <Input
+                  value={video.title}
+                  onChange={(e) =>
+                    updateVideo(video.id, { title: e.target.value })
+                  }
+                  placeholder="Video title"
+                  className="flex-1"
+                />
+                <Input
+                  value={video.description}
+                  onChange={(e) =>
+                    updateVideo(video.id, { description: e.target.value })
+                  }
+                  placeholder="Description"
+                  className="flex-1"
+                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => deleteVideo(video.id)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="flex flex-col md:flex-row items-center gap-4">
+                <input
+                  type="file"
+                  accept="video/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    if (file.size > 100 * 1024 * 1024) {
+                      alert("File must be less than 100MB");
+                      return;
+                    }
+                    setVideoFile(file);
+                    updateVideo(video.id, { file });
+                  }}
+                  className="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none"
+                  style={{ maxWidth: 300 }}
+                />
+                <Button
+                  variant="outline"
+                  className="w-full md:w-auto"
+                  onClick={() => {
+                    if (videoFile) {
+                      videoMutation.mutate(videoFile);
+                    } else {
+                      alert("Please select a video file first.");
+                    }
+                  }}
+                  disabled={!videoFile || videoMutation.status === "pending"}
+                >
+                  {videoMutation.status === "pending"
+                    ? "Uploading..."
+                    : "Upload"}
+                </Button>
+                {videoFile && (
+                  <span className="text-xs text-gray-500">
+                    {videoFile.name}
+                  </span>
+                )}
+              </div>
             </div>
           ))}
 
@@ -368,6 +437,10 @@ export default function CreateCoursePage() {
   const [sections, setSections] = useState<CourseSection[]>([]);
   const [isDark, setIsDark] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [uploadedUrl, setUploadedUrl] = useState<string | null>(null);
+
   const { user } = useUser();
   const toggleTheme = () => {
     setIsDark((prev) => !prev);
@@ -433,7 +506,7 @@ export default function CreateCoursePage() {
       const courseResponse = await api.post("/courses", {
         title: courseTitle,
         description: courseDescription,
-        thumbnailUrl: "", // use thumbnail if available
+        thumbnailUrl: uploadedUrl || "", // send public URL
         instructorId: user.id,
       });
       const courseId = courseResponse.data.id;
@@ -469,6 +542,9 @@ export default function CreateCoursePage() {
       setCourseTitle("");
       setCourseDescription("");
       setSections([]);
+      setFile(null);
+      setPreview(null);
+      setUploadedUrl(null);
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 3000);
     } catch (error) {
@@ -476,7 +552,60 @@ export default function CreateCoursePage() {
       alert("Failed to publish course");
     }
   };
+  const uploadMutation = useMutation({
+    mutationFn: async (file: File) => {
+      // Step 1: Ask backend for signed URL
+      const res = await fetch(
+        `http://localhost:4000/upload/thumbnail?fileType=${file.type}`
+      );
+      if (!res.ok) throw new Error("Failed to get upload URL");
+      const { uploadUrl, key } = await res.json();
 
+      // Step 2: Upload file directly to S3
+      const putRes = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!putRes.ok) throw new Error("Failed to upload file");
+
+      // Step 3: Construct public URL
+      const publicUrl = `https://${import.meta.env.VITE_AWS_S3_BUCKET}.s3.${
+        import.meta.env.VITE_AWS_REGION
+      }.amazonaws.com/${key}`;
+      console.log("Uploaded file key:", uploadUrl);
+      return publicUrl;
+    },
+    onSuccess: (url) => {
+      setUploadedUrl(url);
+    },
+    onError: (err: Error) => {
+      alert(err.message);
+    },
+  });
+
+  const handleUpload = async () => {
+    if (!file) return;
+    uploadMutation.mutate(file);
+  };
+  const handleFileChange = async (e) => {
+    const selected = e.target.files?.[0];
+    if (!selected) return;
+
+    if (!(selected.type === "image/png" || selected.type === "image/jpeg")) {
+      alert("Only PNG or JPG allowed");
+      return;
+    }
+
+    if (selected.size > 2 * 1024 * 1024) {
+      // 2 MB limit
+      alert("File must be under 2MB");
+      return;
+    }
+
+    setFile(selected);
+    setPreview(URL.createObjectURL(selected));
+  };
   return (
     <>
       <SignedIn>
@@ -515,7 +644,19 @@ export default function CreateCoursePage() {
                 </div>
               </div>
             </div>
-
+            <div className="mb-8">
+              <Label className="block mb-2 font-medium text-lg">
+                Course Thumbnail
+              </Label>
+              <DropzoneSection
+                file={file}
+                setFile={setFile}
+                setPreview={setPreview}
+                preview={preview}
+                handleUpload={handleUpload}
+                uploadMutation={uploadMutation}
+              />
+            </div>
             <div className="mb-8">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-2xl font-semibold">Course Curriculum</h2>
