@@ -22,14 +22,15 @@ const App = () => {
     }
   }, []);
   const mutation = useMutation({
-    mutationFn: (newInstructor: { email: string; name: string }) =>
+    mutationFn: (newInstructor: { id: string; email: string; name: string }) =>
       api.post("/api/instructors", newInstructor),
   });
   useEffect(() => {
     if (isSignedIn) {
       const newInstructor = {
+        id: user.id,
         email: user.primaryEmailAddress?.emailAddress,
-        name: user.fullName ? user.fullName : "No Name",
+        name: user.username ? user.username : "No Name",
       };
       mutation.mutate(newInstructor);
       console.log("User signed in:", user);

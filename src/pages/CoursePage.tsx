@@ -1,170 +1,312 @@
 import { useParams } from "react-router-dom";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronDown, Play, FileText, HelpCircle, CheckCircle } from "lucide-react";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
+  ChevronDown,
+  Play,
+  FileText,
+  HelpCircle,
+  CheckCircle,
+} from "lucide-react";
+
+interface Question {
+  id: string;
+  text: string;
+  optionA: string;
+  optionB: string;
+  optionC: string;
+  optionD: string;
+  correct: string;
+}
+
+interface Quiz {
+  id: string;
+  name: string;
+  sectionId: string;
+  questions: Question[];
+}
+
+interface Video {
+  id: string;
+  title: string;
+  description: string;
+  url: string;
+  sectionId: string;
+}
 
 interface Section {
   id: string;
   title: string;
-  lectures: Lecture[];
-  isOpen: boolean;
+  courseId: string;
+  createdAt: string;
+  videos: Video[];
+  quizzes: Quiz[];
+  isOpen?: boolean;
+}
+
+interface Course {
+  id: string;
+  title: string;
+  description: string;
+  thumbnailUrl: string | null;
+  instructorId: string;
+  createdAt: string;
+  sections: Section[];
 }
 
 interface Lecture {
   id: string;
   title: string;
-  type: 'video' | 'text' | 'quiz';
+  type: "video" | "text" | "quiz";
   duration?: string;
   completed: boolean;
 }
 
-const mockSections: Section[] = [
-  {
-    id: "1",
-    title: "Introduction",
-    isOpen: true,
-    lectures: [
-      { id: "1-1", title: "Course Introduction", type: "video", duration: "5:30", completed: true },
-      { id: "1-2", title: "What You'll Learn", type: "text", completed: false },
-    ]
-  },
-  {
-    id: "2", 
-    title: "Getting Started",
-    isOpen: false,
-    lectures: [
-      { id: "2-1", title: "Setting Up Your Environment", type: "video", duration: "12:45", completed: false },
-      { id: "2-2", title: "First Steps", type: "video", duration: "8:20", completed: false },
-      { id: "2-3", title: "Knowledge Check", type: "quiz", completed: false },
-    ]
-  }
-];
-
 export default function CoursePage() {
   const { courseId } = useParams();
-  const [sections, setSections] = useState<Section[]>(mockSections);
-  const [currentLecture, setCurrentLecture] = useState(mockSections[0].lectures[0]);
+  const [course, setCourse] = useState<Course | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [sections, setSections] = useState<Section[]>([]);
+  const [currentVideo, setCurrentVideo] = useState<Video | null>(null);
+  const [currentQuiz, setCurrentQuiz] = useState<Quiz | null>(null);
+  // answers: questionId -> selected option letter (A/B/C/D)
+  const [answers, setAnswers] = useState<{ [key: string]: string }>({});
+  const [score, setScore] = useState<number | null>(null);
+
+  useEffect(() => {
+    const fetchCourse = async () => {
+      try {
+        setLoading(true);
+        setError("");
+        const res = await fetch(`http://localhost:4000/courses/${courseId}`);
+        if (!res.ok) throw new Error("Failed to fetch course");
+        const data = await res.json();
+        setCourse(data);
+        // Add isOpen property to sections for collapsible UI
+        const sectionsWithOpen = data.sections.map(
+          (section: Section, idx: number) => ({ ...section, isOpen: idx === 0 })
+        );
+        setSections(sectionsWithOpen);
+        // Set first video or quiz as current
+        if (sectionsWithOpen.length > 0) {
+          const firstSection = sectionsWithOpen[0];
+          if (firstSection.videos.length > 0) {
+            setCurrentVideo(firstSection.videos[0]);
+            setCurrentQuiz(null);
+          } else if (firstSection.quizzes.length > 0) {
+            setCurrentQuiz(firstSection.quizzes[0]);
+            setCurrentVideo(null);
+          }
+        }
+      } catch (err) {
+        setError("Failed to load course");
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchCourse();
+  }, [courseId]);
 
   const toggleSection = (sectionId: string) => {
-    setSections(sections.map(section => 
-      section.id === sectionId 
-        ? { ...section, isOpen: !section.isOpen }
-        : section
-    ));
-  };
-
-  const getLectureIcon = (type: string) => {
-    switch (type) {
-      case 'video': return <Play className="h-4 w-4" />;
-      case 'text': return <FileText className="h-4 w-4" />;
-      case 'quiz': return <HelpCircle className="h-4 w-4" />;
-      default: return <FileText className="h-4 w-4" />;
-    }
+    setSections(
+      sections.map((section) =>
+        section.id === sectionId
+          ? { ...section, isOpen: !section.isOpen }
+          : section
+      )
+    );
   };
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="flex">
-        {/* Video Player Section */}
-        <div className="flex-1 p-6">
-          <div className="aspect-video bg-black rounded-lg mb-6 flex items-center justify-center">
-            <Play className="h-16 w-16 text-white" />
-          </div>
-          
-          <div className="max-w-4xl">
-            <h1 className="text-3xl font-bold mb-4">{currentLecture.title}</h1>
-            <p className="text-muted-foreground mb-6">
-              Learn advanced concepts and practical applications in this comprehensive course.
-              This lecture covers the fundamentals you need to get started.
-            </p>
-            
-            {currentLecture.type === 'text' && (
-              <Card>
-                <CardContent className="p-6">
-                  <h3 className="text-xl font-semibold mb-4">Lecture Notes</h3>
-                  <div className="prose dark:prose-invert">
-                    <p>This is where the text content of the lecture would be displayed. 
-                    You can include formatted text, code examples, images, and other educational materials.</p>
-                  </div>
-                </CardContent>
-              </Card>
+      {loading ? (
+        <div className="p-12 text-center">Loading course...</div>
+      ) : error ? (
+        <div className="p-12 text-center text-red-500">{error}</div>
+      ) : course ? (
+        <div className="flex">
+          {/* Video Player Section */}
+          <div className="flex-1 p-6">
+            {/* Only show video player if NOT viewing a quiz */}
+            {!currentQuiz && (
+              <div className="aspect-video bg-black rounded-lg mb-6 flex items-center justify-center">
+                {currentVideo ? (
+                  <>
+                    {/* If you want to stream video, use video.url with your backend's stream endpoint */}
+                    <video controls className="w-full h-full rounded-lg">
+                      <source src={currentVideo.url} type="video/mp4" />
+                      Your browser does not support the video tag.
+                    </video>
+                  </>
+                ) : (
+                  <Play className="h-16 w-16 text-white" />
+                )}
+              </div>
             )}
-
-            {currentLecture.type === 'quiz' && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Knowledge Check</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div>
-                      <h4 className="font-medium mb-2">Question 1: What is the main concept covered in this section?</h4>
-                      <div className="space-y-2">
-                        <label className="flex items-center space-x-2">
-                          <input type="radio" name="q1" className="text-primary" />
-                          <span>Option A</span>
-                        </label>
-                        <label className="flex items-center space-x-2">
-                          <input type="radio" name="q1" className="text-primary" />
-                          <span>Option B</span>
-                        </label>
-                        <label className="flex items-center space-x-2">
-                          <input type="radio" name="q1" className="text-primary" />
-                          <span>Option C</span>
-                        </label>
-                      </div>
-                    </div>
-                    <Button>Submit Answer</Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </div>
-        </div>
-
-        {/* Course Content Sidebar */}
-        <div className="w-96 border-l bg-card p-6">
-          <h2 className="text-xl font-bold mb-6">Course Content</h2>
-          
-          <div className="space-y-4">
-            {sections.map((section) => (
-              <Collapsible key={section.id} open={section.isOpen} onOpenChange={() => toggleSection(section.id)}>
-                <CollapsibleTrigger className="flex items-center justify-between w-full p-3 bg-muted rounded-lg hover:bg-muted/80">
-                  <span className="font-medium">{section.title}</span>
-                  <ChevronDown className={`h-4 w-4 transition-transform ${section.isOpen ? 'rotate-180' : ''}`} />
-                </CollapsibleTrigger>
-                
-                <CollapsibleContent className="mt-2 space-y-2">
-                  {section.lectures.map((lecture) => (
-                    <Button
-                      key={lecture.id}
-                      variant={currentLecture.id === lecture.id ? "secondary" : "ghost"}
-                      className="w-full justify-start h-auto p-3"
-                      onClick={() => setCurrentLecture(lecture)}
-                    >
-                      <div className="flex items-center gap-3 w-full">
-                        {lecture.completed ? (
-                          <CheckCircle className="h-4 w-4 text-green-500" />
-                        ) : (
-                          getLectureIcon(lecture.type)
-                        )}
-                        <div className="flex-1 text-left">
-                          <div className="text-sm font-medium">{lecture.title}</div>
-                          {lecture.duration && (
-                            <div className="text-xs text-muted-foreground">{lecture.duration}</div>
-                          )}
+            <div className="max-w-4xl">
+              <h1 className="text-3xl font-bold mb-4">
+                {currentVideo
+                  ? currentVideo.title
+                  : currentQuiz
+                  ? currentQuiz.name
+                  : course.title}
+              </h1>
+              <p className="text-muted-foreground mb-6">
+                {currentVideo
+                  ? currentVideo.description
+                  : currentQuiz
+                  ? "Quiz: Answer the questions below."
+                  : course.description}
+              </p>
+              {/* Quiz rendering */}
+              {currentQuiz && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>{currentQuiz.name}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {currentQuiz.questions.map((q, idx) => (
+                      <div key={q.id} className="mb-6">
+                        <h4 className="font-medium mb-2">
+                          Question {idx + 1}: {q.text}
+                        </h4>
+                        <div className="space-y-2">
+                          {["A", "B", "C", "D"].map((opt) => {
+                            const value = q[
+                              `option${opt}` as keyof Question
+                            ] as string;
+                            return (
+                              <label
+                                key={opt}
+                                className="flex items-center space-x-2"
+                              >
+                                <input
+                                  type="radio"
+                                  name={`q${idx}`}
+                                  className="text-primary"
+                                  value={opt}
+                                  checked={answers[q.id] === opt}
+                                  onChange={() => {
+                                    setAnswers({ ...answers, [q.id]: opt });
+                                  }}
+                                  disabled={score !== null}
+                                />
+                                <span>{value}</span>
+                              </label>
+                            );
+                          })}
                         </div>
                       </div>
+                    ))}
+                    <Button
+                      onClick={() => {
+                        if (!currentQuiz) return;
+                        let correct = 0;
+                        currentQuiz.questions.forEach((q) => {
+                          const selected = answers[q.id]?.toUpperCase();
+                          const answer = q.correct?.toUpperCase();
+                          if (selected && answer && selected === answer)
+                            correct++;
+                        });
+                        setScore(correct);
+                      }}
+                      disabled={score !== null}
+                    >
+                      Submit Answers
                     </Button>
-                  ))}
-                </CollapsibleContent>
-              </Collapsible>
-            ))}
+                    {score !== null && (
+                      <div className="mt-4 text-lg font-semibold text-green-600">
+                        You scored {score} out of {currentQuiz.questions.length}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </div>
+          {/* Course Content Sidebar */}
+          <div className="w-96 border-l bg-card p-6">
+            <h2 className="text-xl font-bold mb-6">Course Content</h2>
+            <div className="space-y-4">
+              {sections.map((section) => (
+                <Collapsible
+                  key={section.id}
+                  open={!!section.isOpen}
+                  onOpenChange={() => toggleSection(section.id)}
+                >
+                  <CollapsibleTrigger className="flex items-center justify-between w-full p-3 bg-muted rounded-lg hover:bg-muted/80">
+                    <span className="font-medium">{section.title}</span>
+                    <ChevronDown
+                      className={`h-4 w-4 transition-transform ${
+                        section.isOpen ? "rotate-180" : ""
+                      }`}
+                    />
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="mt-2 space-y-2">
+                    {/* Videos */}
+                    {section.videos.map((video) => (
+                      <Button
+                        key={video.id}
+                        variant={
+                          currentVideo && currentVideo.id === video.id
+                            ? "secondary"
+                            : "ghost"
+                        }
+                        className="w-full justify-start h-auto p-3"
+                        onClick={() => {
+                          setCurrentVideo(video);
+                          setCurrentQuiz(null);
+                        }}
+                      >
+                        <div className="flex items-center gap-3 w-full">
+                          <Play className="h-4 w-4" />
+                          <div className="flex-1 text-left">
+                            <div className="text-sm font-medium">
+                              {video.title}
+                            </div>
+                          </div>
+                        </div>
+                      </Button>
+                    ))}
+                    {/* Quizzes */}
+                    {section.quizzes.map((quiz) => (
+                      <Button
+                        key={quiz.id}
+                        variant={
+                          currentQuiz && currentQuiz.id === quiz.id
+                            ? "secondary"
+                            : "ghost"
+                        }
+                        className="w-full justify-start h-auto p-3"
+                        onClick={() => {
+                          setCurrentQuiz(quiz);
+                          setCurrentVideo(null);
+                        }}
+                      >
+                        <div className="flex items-center gap-3 w-full">
+                          <HelpCircle className="h-4 w-4" />
+                          <div className="flex-1 text-left">
+                            <div className="text-sm font-medium">
+                              {quiz.name}
+                            </div>
+                          </div>
+                        </div>
+                      </Button>
+                    ))}
+                  </CollapsibleContent>
+                </Collapsible>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
+      ) : null}
     </div>
   );
 }
