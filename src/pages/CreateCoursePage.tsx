@@ -129,302 +129,331 @@ function SortableSection({
     const updatedQuizzes = section.quizzes.filter((quiz) => quiz.id !== quizId);
     onUpdateSection(section.id, { quizzes: updatedQuizzes });
   };
-  const [videoFile, setVideoFile] = useState<File | null>(null);
+  // Store file and preview per video id
+  const [videoFiles, setVideoFiles] = useState<{ [id: string]: File | null }>(
+    {}
+  );
+  // If you want to keep preview, use below, else remove preview logic
+  // const [videoPreviews, setVideoPreviews] = useState<{ [id: string]: string | null }>({});
   const videoMutation = useMutation({
     mutationFn: async (file: File) => {
       if (!file) throw new Error("No file selected");
-
       // Step 1: Ask backend for signed upload URL
       const res = await fetch(
         `http://localhost:4000/upload/video?fileType=${file.type}`
       );
       if (!res.ok) throw new Error("Failed to get signed upload URL");
       const { uploadUrl, key } = await res.json();
-
       // Step 2: Upload directly to S3
       const putRes = await fetch(uploadUrl, {
         method: "PUT",
         headers: { "Content-Type": file.type },
         body: file,
       });
-      if (!putRes.ok) throw new Error("Failed to upload file");
-
-      // Step 3: Return key for use as video url
+      if (!putRes.ok) throw new Error("Failed to upload video");
+      // Step 3: Return S3 key (or you can construct public URL if needed)
       return key;
     },
-    onSuccess: (key, file, context) => {
-      // Find the video with this file and update its url
-      section.videos.forEach((video) => {
-        if (video.file === file) {
-          updateVideo(video.id, { url: key });
-        }
-      });
+    onSuccess: (key, file) => {
+      // Optionally update video url in state after upload
+      // Find video by file reference and update its url
+      const videoId = Object.keys(videoFiles).find(
+        (id) => videoFiles[id] === file
+      );
+      if (videoId) {
+        updateVideo(videoId, { url: key });
+      }
+    },
+    onError: (err: Error) => {
+      alert(err.message);
     },
   });
 
   return (
-    <Card ref={setNodeRef} style={style} className="mb-4">
-      <CardHeader className="pb-3">
-        <div className="flex items-center gap-2">
+    <Card ref={setNodeRef} style={style} className="mb-6">
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle className="flex items-center gap-2">
           <div {...attributes} {...listeners} className="cursor-grab">
-            <GripVertical className="h-5 w-5 text-muted-foreground" />
+            <GripVertical className="h-4 w-4 text-gray-400" />
           </div>
           <Input
             value={section.title}
             onChange={(e) =>
               onUpdateSection(section.id, { title: e.target.value })
             }
-            placeholder="Section title"
-            className="flex-1"
+            className="font-semibold text-lg flex-1"
           />
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => onDeleteSection(section.id)}
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
+        </CardTitle>
+        <Button
+          variant="destructive"
+          size="sm"
+          onClick={() => onDeleteSection(section.id)}
+        >
+          <X className="h-4 w-4" />
+        </Button>
       </CardHeader>
-
       <CardContent>
-        <div className="space-y-3">
-          {/* Videos */}
-          {section.videos.map((video) => (
-            <div
-              key={video.id}
-              className="p-3 border rounded mb-2 flex flex-col gap-3"
-            >
-              <div className="flex items-center gap-3">
-                <Video className="h-4 w-4" />
-                <Input
-                  value={video.title}
-                  onChange={(e) =>
-                    updateVideo(video.id, { title: e.target.value })
+        {/* Videos */}
+        {section.videos.map((video) => (
+          <div
+            key={video.id}
+            className="p-3 border rounded mb-2 flex flex-col gap-3"
+          >
+            <div className="flex items-center gap-3">
+              <Video className="h-4 w-4" />
+              <Input
+                value={video.title}
+                onChange={(e) =>
+                  updateVideo(video.id, { title: e.target.value })
+                }
+                placeholder="Video title"
+                className="flex-1"
+              />
+              <Input
+                value={video.description}
+                onChange={(e) =>
+                  updateVideo(video.id, { description: e.target.value })
+                }
+                placeholder="Description"
+                className="flex-1"
+              />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => deleteVideo(video.id)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="flex flex-col md:flex-row items-center gap-4">
+              {/* Drag and drop video upload, no preview for simplicity */}
+              <div
+                className={`border-2 rounded-lg p-4 flex flex-col items-center justify-center cursor-pointer w-full md:w-64 ${
+                  videoFiles[video.id]
+                    ? "bg-purple-500 text-white py-6"
+                    : "border-dashed border-gray-300 bg-gray-50 hover:bg-gray-100"
+                }`}
+                onClick={() =>
+                  document.getElementById(`video-input-${video.id}`)?.click()
+                }
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const file = e.dataTransfer.files?.[0];
+                  if (!file) return;
+                  if (!file.type.startsWith("video/")) {
+                    alert("Only video files allowed");
+                    return;
                   }
-                  placeholder="Video title"
-                  className="flex-1"
-                />
-                <Input
-                  value={video.description}
-                  onChange={(e) =>
-                    updateVideo(video.id, { description: e.target.value })
+                  if (file.size > 100 * 1024 * 1024) {
+                    alert("File must be less than 100MB");
+                    return;
                   }
-                  placeholder="Description"
-                  className="flex-1"
-                />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => deleteVideo(video.id)}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-              <div className="flex flex-col md:flex-row items-center gap-4">
+                  setVideoFiles((prev) => ({ ...prev, [video.id]: file }));
+                  updateVideo(video.id, { file });
+                }}
+              >
+                {videoFiles[video.id] ? (
+                  <span className="text-white text-sm">
+                    {videoFiles[video.id]?.name}
+                  </span>
+                ) : (
+                  <span className="text-gray-400">
+                    Drag & drop video here or click to select
+                  </span>
+                )}
                 <input
+                  id={`video-input-${video.id}`}
                   type="file"
                   accept="video/*"
+                  style={{ display: "none" }}
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (!file) return;
+                    if (!file.type.startsWith("video/")) {
+                      alert("Only video files allowed");
+                      return;
+                    }
                     if (file.size > 100 * 1024 * 1024) {
                       alert("File must be less than 100MB");
                       return;
                     }
-                    setVideoFile(file);
+                    setVideoFiles((prev) => ({ ...prev, [video.id]: file }));
                     updateVideo(video.id, { file });
                   }}
-                  className="block w-full text-sm text-gray-900 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 focus:outline-none"
-                  style={{ maxWidth: 300 }}
                 />
+              </div>
+              {/* Hide upload button after successful upload (video.url is set) */}
+              {!video.url && (
                 <Button
-                  variant="outline"
                   className="w-full md:w-auto"
                   onClick={() => {
-                    if (videoFile) {
-                      videoMutation.mutate(videoFile);
+                    const file = videoFiles[video.id];
+                    if (file) {
+                      videoMutation.mutate(file);
                     } else {
                       alert("Please select a video file first.");
                     }
                   }}
-                  disabled={!videoFile || videoMutation.status === "pending"}
+                  disabled={
+                    !videoFiles[video.id] || videoMutation.status === "pending"
+                  }
                 >
                   {videoMutation.status === "pending"
                     ? "Uploading..."
                     : "Upload"}
                 </Button>
-                {videoFile && (
-                  <span className="text-xs text-gray-500">
-                    {videoFile.name}
-                  </span>
-                )}
-              </div>
+              )}
             </div>
-          ))}
+          </div>
+        ))}
 
-          {/* Quizzes */}
-          {section.quizzes.map((quiz) => (
-            <div key={quiz.id} className="p-3 border rounded mb-3">
-              <div className="flex items-center gap-3 mb-2">
-                <HelpCircle className="h-4 w-4" />
-                <Input
-                  value={quiz.name}
-                  onChange={(e) =>
-                    updateQuiz(quiz.id, { name: e.target.value })
-                  }
-                  placeholder="Quiz name"
-                  className="flex-1"
-                />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => deleteQuiz(quiz.id)}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-
-              {/* Questions */}
-              {quiz.questions.map((question, qIdx) => (
-                <div key={qIdx} className="border p-2 rounded mb-2">
-                  <Label>Question</Label>
-                  <Input
-                    value={question.text}
-                    onChange={(e) => {
-                      const updatedQuestions = quiz.questions.map((q, idx) =>
-                        idx === qIdx ? { ...q, text: e.target.value } : q
-                      );
-                      updateQuiz(quiz.id, { questions: updatedQuestions });
-                    }}
-                    placeholder="Question text"
-                    className="mb-2"
-                  />
-                  <div className="grid grid-cols-2 gap-2 mb-2">
-                    <div>
-                      <Label>Option A</Label>
-                      <Input
-                        value={question.optionA}
-                        onChange={(e) => {
-                          const updatedQuestions = quiz.questions.map(
-                            (q, idx) =>
-                              idx === qIdx
-                                ? { ...q, optionA: e.target.value }
-                                : q
-                          );
-                          updateQuiz(quiz.id, { questions: updatedQuestions });
-                        }}
-                        placeholder="Option A"
-                      />
-                    </div>
-                    <div>
-                      <Label>Option B</Label>
-                      <Input
-                        value={question.optionB}
-                        onChange={(e) => {
-                          const updatedQuestions = quiz.questions.map(
-                            (q, idx) =>
-                              idx === qIdx
-                                ? { ...q, optionB: e.target.value }
-                                : q
-                          );
-                          updateQuiz(quiz.id, { questions: updatedQuestions });
-                        }}
-                        placeholder="Option B"
-                      />
-                    </div>
-                    <div>
-                      <Label>Option C</Label>
-                      <Input
-                        value={question.optionC}
-                        onChange={(e) => {
-                          const updatedQuestions = quiz.questions.map(
-                            (q, idx) =>
-                              idx === qIdx
-                                ? { ...q, optionC: e.target.value }
-                                : q
-                          );
-                          updateQuiz(quiz.id, { questions: updatedQuestions });
-                        }}
-                        placeholder="Option C"
-                      />
-                    </div>
-                    <div>
-                      <Label>Option D</Label>
-                      <Input
-                        value={question.optionD}
-                        onChange={(e) => {
-                          const updatedQuestions = quiz.questions.map(
-                            (q, idx) =>
-                              idx === qIdx
-                                ? { ...q, optionD: e.target.value }
-                                : q
-                          );
-                          updateQuiz(quiz.id, { questions: updatedQuestions });
-                        }}
-                        placeholder="Option D"
-                      />
-                    </div>
-                  </div>
-                  <Label>Correct Option (A/B/C/D)</Label>
-                  <Input
-                    value={question.correct}
-                    onChange={(e) => {
-                      const updatedQuestions = quiz.questions.map((q, idx) =>
-                        idx === qIdx ? { ...q, correct: e.target.value } : q
-                      );
-                      updateQuiz(quiz.id, { questions: updatedQuestions });
-                    }}
-                    placeholder="Correct option (A/B/C/D)"
-                    className="mb-2"
-                  />
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => {
-                      const updatedQuestions = quiz.questions.filter(
-                        (_, idx) => idx !== qIdx
-                      );
-                      updateQuiz(quiz.id, { questions: updatedQuestions });
-                    }}
-                  >
-                    Delete Question
-                  </Button>
-                </div>
-              ))}
+        {/* Quizzes */}
+        {section.quizzes.map((quiz) => (
+          <div key={quiz.id} className="p-3 border rounded mb-3">
+            <div className="flex items-center gap-3 mb-2">
+              <HelpCircle className="h-4 w-4" />
+              <Input
+                value={quiz.name}
+                onChange={(e) => updateQuiz(quiz.id, { name: e.target.value })}
+                placeholder="Quiz name"
+                className="flex-1"
+              />
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
-                className="mt-2"
-                onClick={() => {
-                  const newQuestion: QuizQuestion = {
-                    text: "",
-                    optionA: "",
-                    optionB: "",
-                    optionC: "",
-                    optionD: "",
-                    correct: "",
-                  };
-                  updateQuiz(quiz.id, {
-                    questions: [...quiz.questions, newQuestion],
-                  });
-                }}
+                onClick={() => deleteQuiz(quiz.id)}
               >
-                Add Question
+                <X className="h-4 w-4" />
               </Button>
             </div>
-          ))}
-
-          <div className="flex gap-2 pt-2">
-            <Button variant="outline" size="sm" onClick={addVideo}>
-              <Video className="h-4 w-4 mr-2" />
-              Add Video
-            </Button>
-            <Button variant="outline" size="sm" onClick={addQuiz}>
-              <HelpCircle className="h-4 w-4 mr-2" />
-              Add Quiz
+            {/* Questions */}
+            {quiz.questions.map((question, qIdx) => (
+              <div key={qIdx} className="border p-2 rounded mb-2">
+                <Label>Question</Label>
+                <Input
+                  value={question.text}
+                  onChange={(e) => {
+                    const updatedQuestions = quiz.questions.map((q, idx) =>
+                      idx === qIdx ? { ...q, text: e.target.value } : q
+                    );
+                    updateQuiz(quiz.id, { questions: updatedQuestions });
+                  }}
+                  placeholder="Question text"
+                  className="mb-2"
+                />
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  <div>
+                    <Label>Option A</Label>
+                    <Input
+                      value={question.optionA}
+                      onChange={(e) => {
+                        const updatedQuestions = quiz.questions.map((q, idx) =>
+                          idx === qIdx ? { ...q, optionA: e.target.value } : q
+                        );
+                        updateQuiz(quiz.id, { questions: updatedQuestions });
+                      }}
+                      placeholder="Option A"
+                    />
+                  </div>
+                  <div>
+                    <Label>Option B</Label>
+                    <Input
+                      value={question.optionB}
+                      onChange={(e) => {
+                        const updatedQuestions = quiz.questions.map((q, idx) =>
+                          idx === qIdx ? { ...q, optionB: e.target.value } : q
+                        );
+                        updateQuiz(quiz.id, { questions: updatedQuestions });
+                      }}
+                      placeholder="Option B"
+                    />
+                  </div>
+                  <div>
+                    <Label>Option C</Label>
+                    <Input
+                      value={question.optionC}
+                      onChange={(e) => {
+                        const updatedQuestions = quiz.questions.map((q, idx) =>
+                          idx === qIdx ? { ...q, optionC: e.target.value } : q
+                        );
+                        updateQuiz(quiz.id, { questions: updatedQuestions });
+                      }}
+                      placeholder="Option C"
+                    />
+                  </div>
+                  <div>
+                    <Label>Option D</Label>
+                    <Input
+                      value={question.optionD}
+                      onChange={(e) => {
+                        const updatedQuestions = quiz.questions.map((q, idx) =>
+                          idx === qIdx ? { ...q, optionD: e.target.value } : q
+                        );
+                        updateQuiz(quiz.id, { questions: updatedQuestions });
+                      }}
+                      placeholder="Option D"
+                    />
+                  </div>
+                </div>
+                <Label>Correct Option (A/B/C/D)</Label>
+                <Input
+                  value={question.correct}
+                  onChange={(e) => {
+                    const updatedQuestions = quiz.questions.map((q, idx) =>
+                      idx === qIdx ? { ...q, correct: e.target.value } : q
+                    );
+                    updateQuiz(quiz.id, { questions: updatedQuestions });
+                  }}
+                  placeholder="Correct option (A/B/C/D)"
+                  className="mb-2"
+                />
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => {
+                    const updatedQuestions = quiz.questions.filter(
+                      (_, idx) => idx !== qIdx
+                    );
+                    updateQuiz(quiz.id, { questions: updatedQuestions });
+                  }}
+                >
+                  Delete Question
+                </Button>
+              </div>
+            ))}
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-2"
+              onClick={() => {
+                const newQuestion: QuizQuestion = {
+                  text: "",
+                  optionA: "",
+                  optionB: "",
+                  optionC: "",
+                  optionD: "",
+                  correct: "",
+                };
+                updateQuiz(quiz.id, {
+                  questions: [...quiz.questions, newQuestion],
+                });
+              }}
+            >
+              Add Question
             </Button>
           </div>
+        ))}
+
+        <div className="flex gap-2 pt-2">
+          <Button variant="outline" size="sm" onClick={addVideo}>
+            <Video className="h-4 w-4 mr-2" />
+            Add Video
+          </Button>
+          <Button variant="outline" size="sm" onClick={addQuiz}>
+            <HelpCircle className="h-4 w-4 mr-2" />
+            Add Quiz
+          </Button>
         </div>
       </CardContent>
     </Card>
