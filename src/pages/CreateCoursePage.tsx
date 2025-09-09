@@ -140,7 +140,7 @@ function SortableSection({
       if (!file) throw new Error("No file selected");
       // Step 1: Ask backend for signed upload URL
       const res = await fetch(
-        `http://localhost:4000/upload/video?fileType=${file.type}`
+        `${import.meta.env.VITE_API_URL}/upload/video?fileType=${file.type}`
       );
       if (!res.ok) throw new Error("Failed to get signed upload URL");
       const { uploadUrl, key } = await res.json();
@@ -531,11 +531,17 @@ export default function CreateCoursePage() {
   const publishCourse = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      let thumbnailUrl = uploadedUrl;
+      // Upload thumbnail if file is selected and not yet uploaded
+      if (file) {
+        thumbnailUrl = await uploadMutation.mutateAsync(file);
+        setUploadedUrl(thumbnailUrl);
+      }
       // Create course
       const courseResponse = await api.post("/courses", {
         title: courseTitle,
         description: courseDescription,
-        thumbnailUrl: uploadedUrl || "", // send public URL
+        thumbnailUrl: thumbnailUrl || "", // send public URL
         instructorId: user.id,
       });
       const courseId = courseResponse.data.id;
@@ -585,7 +591,7 @@ export default function CreateCoursePage() {
     mutationFn: async (file: File) => {
       // Step 1: Ask backend for signed URL
       const res = await fetch(
-        `http://localhost:4000/upload/thumbnail?fileType=${file.type}`
+        `${import.meta.env.VITE_API_URL}/upload/thumbnail?fileType=${file.type}`
       );
       if (!res.ok) throw new Error("Failed to get upload URL");
       const { uploadUrl, key } = await res.json();

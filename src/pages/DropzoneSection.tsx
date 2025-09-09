@@ -74,13 +74,13 @@ export default function DropzoneSection({
         )}
       </div>
       <div className="flex flex-col gap-2 w-full max-w-xs">
-        <Button
+        {/* <Button
           onClick={handleUpload}
           disabled={!file || uploadMutation.status === "pending"}
           className="w-full"
         >
           {uploadMutation.status === "pending" ? "Uploading..." : "Upload File"}
-        </Button>
+        </Button> */}
         {file && <span className="text-xs text-gray-500">{file.name}</span>}
       </div>
     </div>

@@ -75,7 +75,9 @@ function VideoPlayer({ video }: { video: Video }) {
   const { data, isLoading, error } = useQuery({
     queryKey: ["video", videoKey],
     queryFn: async () => {
-      const res = await fetch(`http://localhost:4000/stream/video/${videoKey}`);
+      const res = await fetch(
+        `${import.meta.env.VITE_API_URL}/stream/video/${videoKey}`
+      );
       if (!res.ok) throw new Error("Failed to get video URL");
       return res.json();
     },
@@ -131,7 +133,9 @@ export default function CoursePage() {
       try {
         setLoading(true);
         setError("");
-        const res = await fetch(`http://localhost:4000/courses/${courseId}`);
+        const res = await fetch(
+          `${import.meta.env.VITE_API_URL}/courses/${courseId}`
+        );
         if (!res.ok) throw new Error("Failed to fetch course");
         const data = await res.json();
         setCourse(data);
@@ -139,7 +143,8 @@ export default function CoursePage() {
           (section: Section, idx: number) => ({ ...section, isOpen: idx === 0 })
         );
         setSections(sectionsWithOpen);
-        if (!currentVideo && sectionsWithOpen.length > 0) {
+        // Auto-select first video or quiz
+        if (sectionsWithOpen.length > 0) {
           const firstSection = sectionsWithOpen[0];
           if (firstSection.videos.length > 0) {
             setCurrentVideo(firstSection.videos[0]);
@@ -156,7 +161,7 @@ export default function CoursePage() {
       }
     };
     fetchCourse();
-  }, [courseId, currentVideo]);
+  }, [courseId]);
 
   const toggleSection = (sectionId: string) => {
     setSections((prevSections) =>
@@ -178,7 +183,9 @@ export default function CoursePage() {
   const handleQuizSelection = (quiz: Quiz) => {
     if (currentQuiz?.id !== quiz.id) {
       setCurrentQuiz(quiz);
-      setCurrentVideo(null);
+      setCurrentVideo(null); // Ensure the video player is hidden when a quiz is selected
+      setScore(null); // Reset the score when a new quiz is selected
+      setAnswers({}); // Clear previous answers
     }
   };
 
@@ -192,96 +199,98 @@ export default function CoursePage() {
           <div className="p-12 text-center text-red-500">{error}</div>
         ) : course ? (
           <div className="flex">
-            {/* Video Player Section */}
+            {/* Main Content Section: Show either quiz or video */}
             <div className="flex-1 p-6">
-              {!currentQuiz && (
-                <div className="aspect-video bg-black rounded-lg mb-6 flex items-center justify-center">
-                  {currentVideo ? (
-                    <VideoPlayer video={currentVideo} />
-                  ) : (
-                    <Play className="h-16 w-16 text-white" />
-                  )}
-                </div>
-              )}
               <div className="max-w-4xl">
                 <h1 className="text-3xl font-bold mb-4">
-                  {currentVideo
-                    ? currentVideo.title
-                    : currentQuiz
+                  {currentQuiz
                     ? currentQuiz.name
+                    : currentVideo
+                    ? currentVideo.title
                     : course.title}
                 </h1>
-                <p className="text-muted-foreground mb-6">
-                  {currentVideo
-                    ? currentVideo.description
-                    : currentQuiz
-                    ? "Quiz: Answer the questions below."
-                    : course.description}
-                </p>
-                {/* Quiz rendering */}
-                {currentQuiz && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>{currentQuiz.name}</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      {currentQuiz.questions.map((q, idx) => (
-                        <div key={q.id} className="mb-6">
-                          <h4 className="font-medium mb-2">
-                            Question {idx + 1}: {q.text}
-                          </h4>
-                          <div className="space-y-2">
-                            {"ABCD".split("").map((opt) => {
-                              const value = q[
-                                `option${opt}` as keyof Question
-                              ] as string;
-                              return (
-                                <label
-                                  key={opt}
-                                  className="flex items-center space-x-2"
-                                >
-                                  <input
-                                    type="radio"
-                                    name={`q${idx}`}
-                                    className="text-primary"
-                                    value={opt}
-                                    checked={answers[q.id] === opt}
-                                    onChange={() => {
-                                      setAnswers({ ...answers, [q.id]: opt });
-                                    }}
-                                    disabled={score !== null}
-                                  />
-                                  <span>{value}</span>
-                                </label>
-                              );
-                            })}
+                {/* Main content logic */}
+                {currentQuiz ? (
+                  <>
+                    <p className="text-muted-foreground mb-6">
+                      Quiz: Answer the questions below.
+                    </p>
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>{currentQuiz.name}</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        {currentQuiz.questions.map((q, idx) => (
+                          <div key={q.id} className="mb-6">
+                            <h4 className="font-medium mb-2">
+                              Question {idx + 1}: {q.text}
+                            </h4>
+                            <div className="space-y-2">
+                              {"ABCD".split("").map((opt) => {
+                                const value = q[
+                                  `option${opt}` as keyof Question
+                                ] as string;
+                                return (
+                                  <label
+                                    key={opt}
+                                    className="flex items-center space-x-2"
+                                  >
+                                    <input
+                                      type="radio"
+                                      name={`q${idx}`}
+                                      className="text-primary"
+                                      value={opt}
+                                      checked={answers[q.id] === opt}
+                                      onChange={() => {
+                                        setAnswers({ ...answers, [q.id]: opt });
+                                      }}
+                                      disabled={score !== null}
+                                    />
+                                    <span>{value}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
                           </div>
-                        </div>
-                      ))}
-                      <Button
-                        onClick={() => {
-                          if (!currentQuiz) return;
-                          let correct = 0;
-                          currentQuiz.questions.forEach((q) => {
-                            const selected = answers[q.id]?.toUpperCase();
-                            const answer = q.correct?.toUpperCase();
-                            if (selected && answer && selected === answer)
-                              correct++;
-                          });
-                          setScore(correct);
-                        }}
-                        disabled={score !== null}
-                      >
-                        Submit Answers
-                      </Button>
-                      {score !== null && (
-                        <div className="mt-4 text-lg font-semibold text-green-600">
-                          You scored {score} out of{" "}
-                          {currentQuiz.questions.length}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
+                        ))}
+                        <Button
+                          onClick={() => {
+                            if (!currentQuiz) return;
+                            let correct = 0;
+                            currentQuiz.questions.forEach((q) => {
+                              const selected = answers[q.id]?.toUpperCase();
+                              const answer = q.correct?.toUpperCase();
+                              if (selected && answer && selected === answer)
+                                correct++;
+                            });
+                            setScore(correct);
+                          }}
+                          disabled={score !== null}
+                        >
+                          Submit Answers
+                        </Button>
+                        {score !== null && (
+                          <div className="mt-4 text-lg font-semibold text-green-600">
+                            You scored {score} out of{" "}
+                            {currentQuiz.questions.length}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </>
+                ) : currentVideo ? (
+                  <>
+                    <div className="aspect-video bg-black rounded-lg mb-6 flex items-center justify-center">
+                      <VideoPlayer key={currentVideo.id} video={currentVideo} />
+                    </div>
+                    <p className="text-muted-foreground mb-6">
+                      {currentVideo.description}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-muted-foreground mb-6">
+                    {course.description}
+                  </p>
                 )}
               </div>
             </div>
